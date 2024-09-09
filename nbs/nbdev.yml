@@ -1,0 +1,9 @@
+project:
+  output-dir: _docs
+
+website:
+  title: "CIGNN-experimental"
+  site-url: "https://TimHal.github.io/CIGNN-experimental"
+  description: "CIGNN Experimental Space"
+  repo-branch: main
+  repo-url: "https://github.com/TimHal/CIGNN-experimental"
