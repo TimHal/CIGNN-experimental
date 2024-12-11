@@ -3,3 +3,8 @@ website:
     contents:
       - index.ipynb
       - 00_core.ipynb
+      - 10_datasets.ipynb
+      - 10_datasets_002_EMNIST.ipynb
+      - 20_experiments.ipynb
+      - 21_CIGNN_01_Transforms.ipynb
+      - 21_CIGNN_02_LeNet_with_EMNIST.ipynb
