@@ -153,3 +153,4 @@ checklink/cookies.txt
 .virtual_documents/
 
 wandb/
+nbs/models/
