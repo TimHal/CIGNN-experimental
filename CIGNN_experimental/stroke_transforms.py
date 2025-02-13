@@ -1,3 +1,4 @@
+import random
 import numpy as np
 from scipy.interpolate import CubicSpline
 from scipy.interpolate import UnivariateSpline
@@ -24,12 +25,13 @@ def shorten(strokes: list[list[tuple[float, float]]]) -> list[list[tuple[float, 
 
     return shortened_strokes
 
-def random_move(strokes: list[list[tuple[float, float]]], max_dist=(10, 10)) -> list[list[tuple[float, float]]]:
+def random_move(strokes: list[list[tuple[float, float]]], p=0.2, max_dist=(10, 10)) -> list[list[tuple[float, float]]]:
     """
     Randomly moves the points of the prototype by within the set limits (Gaussian distribution)
 
     Args:
-        prototype: List of strokes, where each stroke is a list of (x, y) tuples.
+        strokes: List of strokes, where each stroke is a list of (x, y) tuples.
+        p: probability (per point) to be moved
         max_dist: 2-tuple of maximum allowed move distance
     
     Returns:
@@ -41,13 +43,17 @@ def random_move(strokes: list[list[tuple[float, float]]], max_dist=(10, 10)) -> 
     for stroke in strokes:
         moved_stroke = []
         for x, y in stroke:
-            # Generate random displacements from a Gaussian distribution
-            dx = np.random.normal(0, std_x)
-            dy = np.random.normal(0, std_y)
-            # Apply the displacements to the original points
-            new_x = x + dx
-            new_y = y + dy
-            moved_stroke.append((new_x, new_y))
+            if np.random.rand() < p:
+                # Generate random displacements from a Gaussian distribution
+                dx = np.random.normal(0, std_x)
+                dy = np.random.normal(0, std_y)
+                # Apply the displacements to the original points
+                new_x = x + dx
+                new_y = y + dy
+                moved_stroke.append((new_x, new_y))
+            else:
+                moved_stroke.append((x, y))
+                
         randomly_moved_strokes.append(moved_stroke)
 
     return randomly_moved_strokes
@@ -68,19 +74,13 @@ def random_move_stroke(strokes: list[list[tuple[float, float]]], max_dist=(10, 1
     randomly_moved_strokes = []
 
     for stroke in strokes:
-        # Generate random offsets for the entire stroke
+
+        moved_stroke = []
         offset_x = np.random.uniform(-max_x, max_x)
         offset_y = np.random.uniform(-max_y, max_y)
-        offset = np.array([offset_x, offset_y])
-        
-        # Convert stroke to a NumPy array for vectorized operations
-        stroke_array = np.array(stroke)
-        
-        # Apply the offset to all points in the stroke
-        moved_stroke = stroke_array + offset
-        
-        # Append the moved stroke to the result list
-        randomly_moved_strokes.append(moved_stroke.tolist())
+        for coord in stroke:
+            moved_stroke.append((coord[0] + offset_x, coord[1] + offset_y))
+        randomly_moved_strokes.append(moved_stroke)
 
     return randomly_moved_strokes
     
@@ -101,7 +101,7 @@ def prolong(strokes: list[list[tuple[float, float]]]) -> list[list[tuple[float, 
     prolonged_strokes = []
     
     for stroke in strokes:
-        if len(stroke) < 2:
+        if len(stroke) < 3:
             prolonged_strokes.append(stroke)
             continue  # Not enough points to fit a spline
 
@@ -117,7 +117,7 @@ def prolong(strokes: list[list[tuple[float, float]]]) -> list[list[tuple[float, 
         distances = np.hypot(dx, dy)
         
         # Calculate the average distance
-        avg_distance = np.mean(distances) * 0.5
+        avg_distance = np.mean(distances) * 0.3
         
         # Parameter t based on cumulative distance
         t = np.insert(np.cumsum(distances), 0, 0)
@@ -126,6 +126,10 @@ def prolong(strokes: list[list[tuple[float, float]]]) -> list[list[tuple[float, 
         t, unique_idx = np.unique(t, return_index=True)
         x = x[unique_idx]
         y = y[unique_idx]
+
+        if len(x) < 3:
+            prolonged_strokes.append(stroke)
+            continue  # Not enough unique points to fit a spline
         
         # Fit cubic splines
         cs_x = CubicSpline(t, x, bc_type='natural')
@@ -133,13 +137,13 @@ def prolong(strokes: list[list[tuple[float, float]]]) -> list[list[tuple[float, 
         
         # Extrapolate one point before the first point
         t_before = t[0] - avg_distance
-        x_before = cs_x(t_before)
-        y_before = cs_y(t_before)
+        x_before = cs_x(t_before).tolist()
+        y_before = cs_y(t_before).tolist()
         
         # Extrapolate one point after the last point
         t_after = t[-1] + avg_distance
-        x_after = cs_x(t_after)
-        y_after = cs_y(t_after)
+        x_after = cs_x(t_after).tolist()
+        y_after = cs_y(t_after).tolist()
         
         # Construct the extended stroke
         extended_stroke = [(x_before, y_before)] + stroke + [(x_after, y_after)]
@@ -252,6 +256,34 @@ def split_strokes(strokes: list[list[tuple[float, float]]], split_interval=5) ->
             split_stroke.append(stroke[i:i + split_interval])
     return split_stroke
 
+# Stroke Splitting 2.0
+# The first version would create too much overhead -> split into too many new strokes
+def split_strokes_once(strokes: list[list[tuple[float, float]]]) -> list[list[tuple[float, float]]]:
+    """
+    Split one stroke only once (and only, if it is of sufficient length)
+    
+    Args:
+        strokes: List of strokes, where each stroke is a list of (x, y) tuples.
+    
+    Returns:
+        split_strokes: Modified prototype with strokes split.
+    """
+    if not strokes:
+        return strokes
+    
+    stroke_idx = random.randint(0, len(strokes) - 1)
+    chosen_stroke = strokes[stroke_idx]
+    
+    if len(chosen_stroke) > 5:
+        # Randomly select a split point that is not at the very beginning or end
+        split_point = random.randint(1, len(chosen_stroke) - 1)
+        
+        # Create new stroke list with the split stroke
+        return strokes[:stroke_idx] + [chosen_stroke[:split_point]] + [chosen_stroke[split_point:]] + strokes[stroke_idx+1:]
+    
+    return strokes
+
+
 def smooth_strokes(strokes: list[list[tuple[float, float]]]) -> list[list[tuple[float, float]]]:
     """
     Smooth each stroke by fitting a cubic spline and re-sampling points.
@@ -266,7 +298,7 @@ def smooth_strokes(strokes: list[list[tuple[float, float]]]) -> list[list[tuple[
     smoothed_strokes = []
 
     for stroke in strokes:
-        if len(stroke) < 2:
+        if len(stroke) < 3:
             smoothed_strokes.append(stroke)
             continue  # Not enough points to fit a spline
 
@@ -283,7 +315,7 @@ def smooth_strokes(strokes: list[list[tuple[float, float]]]) -> list[list[tuple[
         x = x[unique_idx]
         y = y[unique_idx]
 
-        if len(t) < 2:
+        if len(t) < 3:
             smoothed_strokes.append(stroke)
             continue  # Not enough unique points to fit a spline
 
@@ -293,8 +325,8 @@ def smooth_strokes(strokes: list[list[tuple[float, float]]]) -> list[list[tuple[
 
         # Re-sample points along the spline
         t_new = np.linspace(t[0], t[-1], len(stroke))
-        x_smooth = cs_x(t_new)
-        y_smooth = cs_y(t_new)
+        x_smooth = cs_x(t_new).tolist()
+        y_smooth = cs_y(t_new).tolist()
 
         smoothed_stroke = list(zip(x_smooth, y_smooth))
         smoothed_strokes.append(smoothed_stroke)
